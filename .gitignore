@@ -1,3 +1,17 @@
-# Godot 4+ specific ignores
+# Godot 4+ generated data
 .godot/
 /android/
+
+# Local/exported builds
+builds/
+*.apk
+*.aab
+*.idsig
+*.exe
+
+# Editor temporary files
+*.tmp
+
+# OS noise
+Thumbs.db
+.DS_Store

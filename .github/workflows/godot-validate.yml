@@ -1,0 +1,53 @@
+name: Godot 4.7.1 Validate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/complete-gameplay-v1
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Godot 4.7.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 \
+            -o godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7.1-stable/Godot_v4.7.1-stable_linux.x86_64.zip
+          unzip -q godot.zip
+          chmod +x Godot_v4.7.1-stable_linux.x86_64
+          ./Godot_v4.7.1-stable_linux.x86_64 --version
+
+      - name: Import project and validate scripts
+        shell: bash
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.1-stable_linux.x86_64 \
+            --headless --path . --import --verbose \
+            2>&1 | tee godot-import.log
+
+          if grep -E "SCRIPT ERROR|Parse Error|Could not parse|Failed to load script" godot-import.log; then
+            echo "Godot reported a script parsing/loading error."
+            exit 1
+          fi
+
+      - name: Launch lobby headlessly
+        shell: bash
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.1-stable_linux.x86_64 \
+            --headless --path . scenes/Lobby.tscn --quit-after 12 \
+            2>&1 | tee godot-run.log
+
+          if grep -E "SCRIPT ERROR|Parse Error|Could not parse|Failed to load script|Invalid call|Invalid access" godot-run.log; then
+            echo "Godot reported a runtime/script error during startup."
+            exit 1
+          fi
