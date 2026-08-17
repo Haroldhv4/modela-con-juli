@@ -10,6 +10,12 @@ var last_equipped = {}
 var initialized = false
 var touch_dragging = false
 
+# Idle esquelético ligero para que Chiyo no parezca una imagen estática.
+var idle_skeleton = null
+var idle_indices = {}
+var idle_base = {}
+var idle_clock = 0.0
+
 func _ready():
 	set_process(false)
 	# Los hijos reciben _ready antes que el nodo Lobby. Esperamos a que la UI haya
@@ -38,27 +44,27 @@ func _initialize():
 	set_process(true)
 	set_process_input(true)
 
-func _process(_delta):
+func _process(delta):
 	if not initialized or lobby == null:
 		return
 
 	var current = lobby.get("equipped")
-	if not (current is Dictionary):
-		return
+	if current is Dictionary:
+		var changed_category = ""
+		for category in CLOTHING_CATEGORIES:
+			if str(current.get(category, "")) != str(last_equipped.get(category, "")):
+				changed_category = category
+				break
 
-	var changed_category = ""
-	for category in CLOTHING_CATEGORIES:
-		if str(current.get(category, "")) != str(last_equipped.get(category, "")):
-			changed_category = category
-			break
+		if changed_category != "":
+			var item_id = str(current.get(changed_category, ""))
+			var next_variant = OutfitRuntime.variant_from_item(changed_category, item_id)
+			if next_variant != "" and next_variant != active_variant:
+				_switch_character(next_variant, true)
 
-	if changed_category != "":
-		var item_id = str(current.get(changed_category, ""))
-		var next_variant = OutfitRuntime.variant_from_item(changed_category, item_id)
-		if next_variant != "" and next_variant != active_variant:
-			_switch_character(next_variant, true)
+		last_equipped = current.duplicate(true)
 
-	last_equipped = current.duplicate(true)
+	_animate_idle(delta)
 
 func _input(event):
 	# Control táctil adicional para Android. En PC se conserva el mouse/rueda que ya
@@ -130,14 +136,15 @@ func _switch_character(variant: String, animate: bool):
 	next_character.rotation_degrees = Vector3(0.0, current_yaw, 0.0)
 	next_character.scale = Vector3.ONE
 
-	# LobbyUI_v11 ya contiene giro, zoom e idle. Le entregamos el nuevo modelo para
-	# que esas funciones sigan trabajando sin duplicar lógica.
+	# LobbyUI_v11 ya contiene giro, zoom e idle del nodo raíz. Le entregamos el
+	# modelo actual para conservar esos controles.
 	lobby.set("character_node", next_character)
 	lobby.set("character_base_y", -0.15)
 	lobby.set("character_yaw", current_yaw)
 
 	active_variant = variant
 	OutfitRuntime.save_variant(active_variant)
+	_prepare_idle_skeleton(next_character)
 
 	if animate:
 		next_character.scale = Vector3(0.94, 0.94, 0.94)
@@ -155,3 +162,53 @@ func _switch_character(variant: String, animate: bool):
 				"yukata": "Yukata"
 			}
 			toast_method.call("Outfit 3D: " + str(pretty.get(active_variant, active_variant)))
+
+func _prepare_idle_skeleton(character: Node):
+	idle_skeleton = OutfitRuntime.find_first_skeleton(character)
+	idle_indices.clear()
+	idle_base.clear()
+	idle_clock = 0.0
+	if idle_skeleton == null:
+		return
+
+	var definitions = {
+		"spine": ["spine", "chest", "upperchest"],
+		"head": ["head"],
+		"left_arm": ["leftupperarm", "lupperarm", "upperarml", "leftarm"],
+		"right_arm": ["rightupperarm", "rupperarm", "upperarmr", "rightarm"]
+	}
+	for key_variant in definitions.keys():
+		var key = str(key_variant)
+		var index = _find_idle_bone(definitions[key_variant])
+		if index >= 0:
+			idle_indices[key] = index
+			idle_base[key] = idle_skeleton.get_bone_pose_rotation(index)
+
+func _find_idle_bone(tokens: Array) -> int:
+	if idle_skeleton == null:
+		return -1
+	for i in range(idle_skeleton.get_bone_count()):
+		var bone_name = _normalize_bone(str(idle_skeleton.get_bone_name(i)))
+		for token_variant in tokens:
+			if bone_name.find(_normalize_bone(str(token_variant))) != -1:
+				return i
+	return -1
+
+func _normalize_bone(value: String) -> String:
+	return value.to_lower().replace("_", "").replace("-", "").replace(".", "").replace(" ", "")
+
+func _animate_idle(delta):
+	if idle_skeleton == null:
+		return
+	idle_clock += delta
+	_apply_idle_bone("spine", Vector3.FORWARD, sin(idle_clock * 0.85) * 0.018)
+	_apply_idle_bone("head", Vector3.UP, sin(idle_clock * 0.55) * 0.025)
+	_apply_idle_bone("left_arm", Vector3.FORWARD, sin(idle_clock * 0.72) * 0.014)
+	_apply_idle_bone("right_arm", Vector3.FORWARD, -sin(idle_clock * 0.72) * 0.014)
+
+func _apply_idle_bone(key: String, axis: Vector3, angle: float):
+	if not idle_indices.has(key) or not idle_base.has(key):
+		return
+	var index = int(idle_indices[key])
+	var base_rotation = idle_base[key]
+	idle_skeleton.set_bone_pose_rotation(index, base_rotation * Quaternion(axis, angle))
