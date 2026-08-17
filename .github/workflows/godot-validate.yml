@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feature/complete-gameplay-v1
+      - feature/modular-juli-v2
 
 jobs:
   validate:
@@ -39,15 +40,41 @@ jobs:
             exit 1
           fi
 
+      - name: Audit lightweight Juli GLB
+        shell: bash
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.1-stable_linux.x86_64 \
+            --headless --path . --script res://scripts/CharacterAudit.gd \
+            2>&1 | tee character-audit.log
+
+          if grep -E "SCRIPT ERROR|Parse Error|AUDIT:" character-audit.log; then
+            echo "Character audit failed."
+            exit 1
+          fi
+
       - name: Launch lobby headlessly
         shell: bash
         run: |
           set -o pipefail
           ./Godot_v4.7.1-stable_linux.x86_64 \
-            --headless --path . scenes/Lobby.tscn --quit-after 12 \
-            2>&1 | tee godot-run.log
+            --headless --path . scenes/Lobby.tscn --quit-after 8 \
+            2>&1 | tee godot-lobby.log
 
-          if grep -E "SCRIPT ERROR|Parse Error|Could not parse|Failed to load script|Invalid call|Invalid access" godot-run.log; then
-            echo "Godot reported a runtime/script error during startup."
+          if grep -E "SCRIPT ERROR|Parse Error|Could not parse|Failed to load script|Invalid call|Invalid access" godot-lobby.log; then
+            echo "Godot reported a lobby runtime/script error."
+            exit 1
+          fi
+
+      - name: Launch runway headlessly
+        shell: bash
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.1-stable_linux.x86_64 \
+            --headless --path . scenes/Runway.tscn --quit-after 8 \
+            2>&1 | tee godot-runway.log
+
+          if grep -E "SCRIPT ERROR|Parse Error|Could not parse|Failed to load script|Invalid call|Invalid access" godot-runway.log; then
+            echo "Godot reported a runway runtime/script error."
             exit 1
           fi
