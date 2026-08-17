@@ -9,7 +9,7 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -31,7 +31,7 @@ jobs:
         run: |
           set -o pipefail
           ./Godot_v4.7.1-stable_linux.x86_64 \
-            --headless --editor --path . --quit-after 8 --verbose \
+            --headless --path . --import --verbose \
             2>&1 | tee godot-import.log
 
           if grep -E "SCRIPT ERROR|Parse Error|Could not parse|Failed to load script" godot-import.log; then
@@ -39,12 +39,12 @@ jobs:
             exit 1
           fi
 
-      - name: Launch main scene headlessly
+      - name: Launch lobby headlessly
         shell: bash
         run: |
           set -o pipefail
           ./Godot_v4.7.1-stable_linux.x86_64 \
-            --headless --path . --quit-after 12 \
+            --headless --path . scenes/Lobby.tscn --quit-after 12 \
             2>&1 | tee godot-run.log
 
           if grep -E "SCRIPT ERROR|Parse Error|Could not parse|Failed to load script|Invalid call|Invalid access" godot-run.log; then
