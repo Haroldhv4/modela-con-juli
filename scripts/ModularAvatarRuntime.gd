@@ -1,9 +1,9 @@
 extends RefCounted
 class_name ModularAvatarRuntime
 
-# Convierte el mesh combinado del avatar anime en piezas skinned independientes
-# sin tocar el Skeleton3D. Esto nos permite ocultar el Outfit original y añadir
-# prendas nuevas al MISMO esqueleto en lugar de reemplazar todo el personaje.
+# Divide las superficies del mesh combinado del avatar ligero en piezas skinned
+# independientes, todas ligadas al mismo Skeleton3D/Skin. De este modo podremos
+# sustituir únicamente la ropa sin volver a cargar otro personaje completo.
 
 const SOURCE_MESH_NAME = "Body_AnimeSchoolGirl"
 const PART_NAMES = {
@@ -18,7 +18,7 @@ static func prepare(character: Node) -> Dictionary:
 	if character == null:
 		return result
 
-	# Si ya fue modularizado, reutilizamos las piezas existentes.
+	# Si ya fue preparado, no duplicamos meshes.
 	for part_name_variant in PART_NAMES.values():
 		var existing = _find_node_recursive(character, str(part_name_variant))
 		if existing is MeshInstance3D:
@@ -41,26 +41,24 @@ static func prepare(character: Node) -> Dictionary:
 	if parent == null:
 		return result
 
-	# Las superficies importadas conservan ARRAY_BONES + ARRAY_WEIGHTS. Al copiar
-	# esos arrays y reutilizar Skin/Skeleton, cada nueva pieza sigue animándose con
-	# exactamente el mismo rig.
 	for surface_index in range(array_mesh.get_surface_count()):
-		var surface_name = array_mesh.surface_get_name(surface_index)
-		var normalized = str(surface_name).to_lower()
+		var surface_name = str(array_mesh.surface_get_name(surface_index))
+		var normalized = surface_name.to_lower()
 		var node_name = str(PART_NAMES.get(normalized, surface_name))
+
+		# surface_get_arrays conserva vértices, normales, UV, ARRAY_BONES y
+		# ARRAY_WEIGHTS. No copiamos blend-shapes aquí porque no son necesarios para
+		# separar estas cuatro superficies y podían invalidar el nuevo ArrayMesh.
+		var arrays = array_mesh.surface_get_arrays(surface_index)
+		if arrays.is_empty():
+			push_warning("ModelaConJuli: superficie vacía: " + surface_name)
+			continue
 
 		var part_mesh = ArrayMesh.new()
 		part_mesh.resource_name = node_name + "Mesh"
-
-		for blend_index in range(array_mesh.get_blend_shape_count()):
-			part_mesh.add_blend_shape(array_mesh.get_blend_shape_name(blend_index))
-		part_mesh.blend_shape_mode = array_mesh.blend_shape_mode
-
-		var arrays = array_mesh.surface_get_arrays(surface_index)
-		var blend_arrays = array_mesh.surface_get_blend_shape_arrays(surface_index)
 		var primitive = array_mesh.surface_get_primitive_type(surface_index)
-		part_mesh.add_surface_from_arrays(primitive, arrays, blend_arrays)
-		part_mesh.surface_set_name(0, str(surface_name))
+		part_mesh.add_surface_from_arrays(primitive, arrays)
+		part_mesh.surface_set_name(0, surface_name)
 
 		var material = source.get_active_material(surface_index)
 		if material == null:
@@ -74,16 +72,21 @@ static func prepare(character: Node) -> Dictionary:
 		part.skin = source.skin
 		part.skeleton = source.skeleton
 		part.transform = source.transform
-		part.cast_shadow = source.cast_shadow
-		part.visibility_range_begin = source.visibility_range_begin
-		part.visibility_range_end = source.visibility_range_end
 		parent.add_child(part)
 		result[node_name] = part
 
-	# El combinado deja de renderizar; no lo destruimos para mantener una ruta de
-	# recuperación y evitar modificar el recurso GLB importado.
-	source.visible = false
-	source.set_meta("modela_con_juli_modular_source", true)
+	if result.size() == PART_NAMES.size():
+		# Ocultamos el combinado solo cuando las cuatro piezas se construyeron bien.
+		source.visible = false
+		source.set_meta("modela_con_juli_modular_source", true)
+	else:
+		# Si algo falla conservamos el original visible para no dejar al personaje vacío.
+		for value in result.values():
+			if value is MeshInstance3D:
+				value.queue_free()
+		result.clear()
+		push_error("ModelaConJuli: no se pudieron crear todas las piezas modulares")
+
 	return result
 
 static func set_original_outfit_visible(character: Node, visible: bool) -> void:
