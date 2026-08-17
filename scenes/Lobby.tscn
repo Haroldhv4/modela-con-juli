@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3 uid="uid://cwmawn5lbeip"]
+[gd_scene load_steps=6 format=3 uid="uid://cwmawn5lbeip"]
 
 [ext_resource type="PackedScene" uid="uid://b1kemdmm8nxyx" path="res://assets/characters/juli/anime_school_girl_rigged.glb" id="1_juli"]
 [ext_resource type="Script" uid="uid://wb3xd3qot3ut" path="res://scripts/LobbyUI_v11.gd" id="1_ras1x"]
 [ext_resource type="Script" path="res://scripts/LobbySessionController.gd" id="2_session"]
 [ext_resource type="Script" path="res://scripts/LobbyPerformanceController.gd" id="3_performance"]
+[ext_resource type="Script" path="res://scripts/LobbyModularAvatarController.gd" id="4_modular"]
 
 [node name="Lobby" type="Control" unique_id=1874424086]
 layout_mode = 3
@@ -19,6 +20,9 @@ script = ExtResource("2_session")
 
 [node name="PerformanceController" type="Node" parent="."]
 script = ExtResource("3_performance")
+
+[node name="ModularAvatarController" type="Node" parent="."]
+script = ExtResource("4_modular")
 
 [node name="CharacterViewportContainer" type="SubViewportContainer" parent="." unique_id=1300799340]
 layout_mode = 0
