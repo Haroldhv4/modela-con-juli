@@ -8,6 +8,7 @@ var world = null
 var active_variant = OutfitRuntime.DEFAULT_VARIANT
 var last_equipped = {}
 var initialized = false
+var touch_dragging = false
 
 func _ready():
 	set_process(false)
@@ -35,6 +36,7 @@ func _initialize():
 	_switch_character(active_variant, false)
 	initialized = true
 	set_process(true)
+	set_process_input(true)
 
 func _process(_delta):
 	if not initialized or lobby == null:
@@ -57,6 +59,51 @@ func _process(_delta):
 			_switch_character(next_variant, true)
 
 	last_equipped = current.duplicate(true)
+
+func _input(event):
+	# Control táctil adicional para Android. En PC se conserva el mouse/rueda que ya
+	# maneja LobbyUI_v11. En celular: arrastrar horizontal gira y vertical hace zoom.
+	if not initialized or lobby == null:
+		return
+
+	var container = lobby.get_node_or_null("CharacterViewportContainer")
+	if container == null:
+		return
+
+	if event is InputEventScreenTouch:
+		var inside = container.get_global_rect().has_point(event.position)
+		if event.pressed and inside:
+			touch_dragging = true
+			if event.double_tap:
+				_reset_touch_view()
+			get_viewport().set_input_as_handled()
+		elif not event.pressed:
+			touch_dragging = false
+
+	elif event is InputEventScreenDrag and touch_dragging:
+		var yaw_value = float(lobby.get("character_yaw"))
+		yaw_value += event.relative.x * 0.34
+		lobby.set("character_yaw", yaw_value)
+
+		var camera = lobby.get("character_camera")
+		if camera:
+			var z_value = float(lobby.get("character_camera_z"))
+			z_value = clamp(z_value + event.relative.y * 0.008, 3.25, 4.75)
+			lobby.set("character_camera_z", z_value)
+			var position = camera.position
+			position.z = z_value
+			camera.position = position
+
+		get_viewport().set_input_as_handled()
+
+func _reset_touch_view():
+	lobby.set("character_yaw", 0.0)
+	lobby.set("character_camera_z", 4.04)
+	var camera = lobby.get("character_camera")
+	if camera:
+		var position = camera.position
+		position.z = 4.04
+		camera.position = position
 
 func _switch_character(variant: String, animate: bool):
 	if world == null:
