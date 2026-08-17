@@ -1,7 +1,7 @@
-[gd_scene format=3 uid="uid://cwmawn5lbeip"]
+[gd_scene load_steps=3 format=3 uid="uid://cwmawn5lbeip"]
 
-[ext_resource type="PackedScene" uid="uid://b1kemdmm8nxyx" path="res://assets/characters/juli/anime_school_girl_rigged.glb" id="1_6jt0u"]
 [ext_resource type="Script" uid="uid://wb3xd3qot3ut" path="res://scripts/LobbyUI_v11.gd" id="1_ras1x"]
+[ext_resource type="Script" path="res://scripts/LobbyOutfitController.gd" id="2_outfit"]
 
 [node name="Lobby" type="Control" unique_id=1874424086]
 layout_mode = 3
@@ -11,6 +11,9 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_ras1x")
+
+[node name="OutfitController" type="Node" parent="."]
+script = ExtResource("2_outfit")
 
 [node name="CharacterViewportContainer" type="SubViewportContainer" parent="." unique_id=1300799340]
 layout_mode = 0
@@ -39,6 +42,3 @@ transform = Transform3D(0.81915206, -0.4055798, 0.4055798, 0, 0.70710677, 0.7071
 light_color = Color(1, 0.9019608, 0.77254903, 1)
 light_energy = 0.0
 sky_mode = 2
-
-[node name="Juli" parent="CharacterViewportContainer/CharacterViewport/CharacterWorld" unique_id=465247947 instance=ExtResource("1_6jt0u")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.15, 0)
