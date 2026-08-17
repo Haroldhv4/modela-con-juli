@@ -53,6 +53,19 @@ jobs:
             exit 1
           fi
 
+      - name: Validate modular avatar split
+        shell: bash
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.1-stable_linux.x86_64 \
+            --headless --path . --script res://scripts/ModularAvatarTest.gd \
+            2>&1 | tee modular-avatar.log
+
+          if grep -E "SCRIPT ERROR|Parse Error|MODULAR TEST:" modular-avatar.log; then
+            echo "Modular avatar test failed."
+            exit 1
+          fi
+
       - name: Launch lobby headlessly
         shell: bash
         run: |
