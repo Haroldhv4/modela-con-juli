@@ -17,6 +17,10 @@ Rama: `feature/complete-gameplay-v1`
 - Secuencia automática: entrada → caminata → pose → regreso → puntuación.
 - Movimiento esquelético de piernas/brazos de mejor esfuerzo cuando los nombres de huesos coinciden.
 - Puntuación local, estrellas, Repetir y Volver al lobby.
+- Modos Clásico, Duelo de Estilo y Desafío Diario guardados entre escenas.
+- Duelo muestra rival local y resultado; Desafío Diario usa una meta de puntuación.
+- Eventos, Clasificación y Equipo abren paneles locales funcionales.
+- Clasificación guarda mejor puntuación, última puntuación, número de pasarelas e historial reciente.
 - Fondo boutique reutilizado detrás de la pasarela para mantener el proyecto ligero en Android.
 
 ## Cómo probar
@@ -34,13 +38,17 @@ Rama: `feature/complete-gameplay-v1`
    - usa rueda del mouse para zoom;
    - selecciona distintas tarjetas en Ropa superior / Pantalones / Calzado;
    - comprueba que el modelo 3D cambia de conjunto;
-   - selecciona Cabello para comprobar los tonos.
+   - selecciona Cabello para comprobar los tonos;
+   - prueba Clásico / Duelo / Desafío Diario;
+   - abre Eventos, Clasificación y Equipo.
 6. Pulsa **EMPEZAR PASARELA** y deja completar la secuencia.
-7. Prueba `REPETIR` y `VOLVER AL LOBBY`.
+7. Comprueba puntuación y estrellas. En Duelo o Desafío Diario aparecerá además el resultado propio del modo.
+8. Prueba `REPETIR` y `VOLVER AL LOBBY`.
+9. Vuelve a Clasificación y confirma que se guardó el resultado.
 
 ## Android
 
-La rama conserva `gl_compatibility` y ETC2/ASTC del proyecto. Después de comprobar F5 en PC, vuelve a exportar el APK desde el preset Android y prueba giro táctil y botones.
+La rama conserva `gl_compatibility` y ETC2/ASTC del proyecto. Después de comprobar F5 en PC, vuelve a exportar el APK desde el preset Android y prueba giro táctil, zoom vertical y botones.
 
 ## Limitación actual del asset Chiyo
 
