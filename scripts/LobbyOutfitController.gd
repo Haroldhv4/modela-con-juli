@@ -10,6 +10,13 @@ var last_equipped = {}
 var initialized = false
 var touch_dragging = false
 
+# Carga asíncrona del siguiente outfit. El personaje actual permanece visible
+# mientras el nuevo GLB se prepara en segundo plano.
+var pending_variant = ""
+var pending_animate = false
+var pending_started_msec = 0
+var pending_toast_shown = false
+
 # Idle esquelético ligero para que Chiyo no parezca una imagen estática.
 var idle_skeleton = null
 var idle_indices = {}
@@ -39,14 +46,16 @@ func _initialize():
 	else:
 		active_variant = OutfitRuntime.variant_from_equipped(last_equipped)
 
-	_switch_character(active_variant, false)
 	initialized = true
 	set_process(true)
 	set_process_input(true)
+	_request_character(active_variant, false)
 
 func _process(delta):
 	if not initialized or lobby == null:
 		return
+
+	_poll_pending_character()
 
 	var current = lobby.get("equipped")
 	if current is Dictionary:
@@ -59,8 +68,8 @@ func _process(delta):
 		if changed_category != "":
 			var item_id = str(current.get(changed_category, ""))
 			var next_variant = OutfitRuntime.variant_from_item(changed_category, item_id)
-			if next_variant != "" and next_variant != active_variant:
-				_switch_character(next_variant, true)
+			if next_variant != "" and (next_variant != active_variant or world.get_node_or_null("Juli") == null):
+				_request_character(next_variant, true)
 
 		last_equipped = current.duplicate(true)
 
@@ -111,57 +120,130 @@ func _reset_touch_view():
 		position.z = 4.04
 		camera.position = position
 
-func _switch_character(variant: String, animate: bool):
-	if world == null:
+func _request_character(variant: String, animate: bool):
+	if world == null or not OutfitRuntime.is_valid_variant(variant):
 		return
 
-	var next_character = OutfitRuntime.instantiate_variant(variant)
-	if next_character == null:
+	# Si el mismo outfit ya está visible, no hacemos trabajo extra.
+	if variant == active_variant and world.get_node_or_null("Juli") != null and pending_variant == "":
+		return
+
+	pending_variant = variant
+	pending_animate = animate
+	pending_started_msec = Time.get_ticks_msec()
+	pending_toast_shown = false
+
+	var error = OutfitRuntime.request_variant(variant)
+	if error != OK:
+		pending_variant = ""
+		_show_load_message("No se pudo preparar el outfit 3D")
+		push_error("ModelaConJuli: fallo al solicitar outfit " + variant + " error=" + str(error))
+		return
+
+	# El toast informa sin esconder el personaje ni bloquear la interfaz.
+	_show_load_message("Preparando outfit 3D…")
+	pending_toast_shown = true
+
+func _poll_pending_character():
+	if pending_variant == "":
+		return
+
+	var requested_variant = pending_variant
+	var status = OutfitRuntime.variant_load_status(requested_variant)
+
+	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		# Si una máquina tarda bastante, mantenemos el outfit anterior visible y damos
+		# feedback; nunca quitamos el personaje antes de tener listo el reemplazo.
+		if not pending_toast_shown and Time.get_ticks_msec() - pending_started_msec > 350:
+			_show_load_message("Cargando outfit 3D…")
+			pending_toast_shown = true
+		return
+
+	if status == ResourceLoader.THREAD_LOAD_LOADED:
+		var next_character = OutfitRuntime.instantiate_requested_variant(requested_variant)
+		if next_character == null:
+			pending_variant = ""
+			_show_load_message("No se pudo mostrar ese outfit")
+			return
+
+		# La petición activa pudo cambiar mientras cargaba otro modelo. Solo aplicamos
+		# el outfit que sigue siendo el seleccionado por el usuario.
+		if requested_variant != pending_variant:
+			next_character.queue_free()
+			return
+
+		var animate = pending_animate
+		pending_variant = ""
+		pending_toast_shown = false
+		_commit_character_swap(next_character, requested_variant, animate)
+		return
+
+	if status == ResourceLoader.THREAD_LOAD_FAILED or status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+		pending_variant = ""
+		pending_toast_shown = false
+		_show_load_message("No se pudo cargar ese outfit")
+		push_error("ModelaConJuli: carga de outfit fallida: " + requested_variant)
+
+func _commit_character_swap(next_character: Node3D, variant: String, animate: bool):
+	if world == null or next_character == null:
 		return
 
 	var current_yaw = 0.0
 	var existing = world.get_node_or_null("Juli")
 	if existing:
 		current_yaw = existing.rotation_degrees.y
-		world.remove_child(existing)
-		existing.queue_free()
 	else:
 		var yaw_value = lobby.get("character_yaw")
 		if yaw_value != null:
 			current_yaw = float(yaw_value)
 
-	next_character.name = "Juli"
-	world.add_child(next_character)
+	# Montamos primero el nuevo personaje fuera de la vista. Solo cuando ya está
+	# dentro del árbol ocultamos/eliminamos el anterior. Así nunca existe un frame vacío.
+	next_character.name = "JuliIncoming"
 	next_character.position = Vector3(0.0, -0.15, 0.0)
 	next_character.rotation_degrees = Vector3(0.0, current_yaw, 0.0)
 	next_character.scale = Vector3.ONE
+	next_character.visible = false
+	world.add_child(next_character)
 
-	# LobbyUI_v11 ya contiene giro, zoom e idle del nodo raíz. Le entregamos el
-	# modelo actual para conservar esos controles.
+	# Aplicamos estado al nodo entrante antes de hacerlo visible.
 	lobby.set("character_node", next_character)
 	lobby.set("character_base_y", -0.15)
 	lobby.set("character_yaw", current_yaw)
+	_prepare_idle_skeleton(next_character)
+
+	next_character.visible = true
+	if existing:
+		existing.visible = false
+		existing.name = "JuliOutgoing"
+		world.remove_child(existing)
+		existing.queue_free()
+	next_character.name = "Juli"
 
 	active_variant = variant
 	OutfitRuntime.save_variant(active_variant)
-	_prepare_idle_skeleton(next_character)
 
 	if animate:
-		next_character.scale = Vector3(0.94, 0.94, 0.94)
+		next_character.scale = Vector3(0.97, 0.97, 0.97)
 		var tween = create_tween()
-		tween.set_trans(Tween.TRANS_BACK)
+		tween.set_trans(Tween.TRANS_QUAD)
 		tween.set_ease(Tween.EASE_OUT)
-		tween.tween_property(next_character, "scale", Vector3.ONE, 0.24)
+		tween.tween_property(next_character, "scale", Vector3.ONE, 0.16)
 
-		var toast_method = Callable(lobby, "_show_toast")
-		if toast_method.is_valid():
-			var pretty = {
-				"base": "Base",
-				"normal": "Casual",
-				"school": "Escolar",
-				"yukata": "Yukata"
-			}
-			toast_method.call("Outfit 3D: " + str(pretty.get(active_variant, active_variant)))
+	var pretty = {
+		"base": "Base",
+		"normal": "Casual",
+		"school": "Escolar",
+		"yukata": "Yukata"
+	}
+	_show_load_message("Outfit 3D: " + str(pretty.get(active_variant, active_variant)))
+
+func _show_load_message(text: String):
+	if lobby == null:
+		return
+	var toast_method = Callable(lobby, "_show_toast")
+	if toast_method.is_valid():
+		toast_method.call(text)
 
 func _prepare_idle_skeleton(character: Node):
 	idle_skeleton = OutfitRuntime.find_first_skeleton(character)
