@@ -21,8 +21,8 @@ func _initialize():
 		return
 
 	parts = ModularAvatarRuntime.prepare(character)
-	if parts.has("Body") and parts.has("Eyes") and parts.has("Hair") and parts.has("OriginalOutfit"):
-		print("ModelaConJuli: avatar modular listo [Body, Eyes, Hair, OriginalOutfit]")
+	if parts.has("Body") and parts.has("OriginalOutfit") and parts.has("Skeleton"):
+		print("ModelaConJuli: avatar modular listo [Body, OriginalOutfit, Skeleton, Glasses]")
 	else:
 		push_warning("ModelaConJuli: avatar modular incompleto: " + str(parts.keys()))
 		return
