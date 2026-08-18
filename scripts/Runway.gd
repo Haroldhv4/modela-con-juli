@@ -107,9 +107,9 @@ func _build_background() -> void:
 	runway_floor.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(runway_floor)
 
-	for x in [497, 779]:
+	for x_value in [497.0, 779.0]:
 		var light_strip := ColorRect.new()
-		light_strip.position = Vector2(x, 104)
+		light_strip.position = Vector2(float(x_value), 104.0)
 		light_strip.size = Vector2(3, 532)
 		light_strip.color = Color(0.95, 0.76, 0.38, 0.42)
 		light_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -329,11 +329,15 @@ func _judge_outfit() -> void:
 	status_label.text = "El jurado esta puntuando..."
 	var base_score := _calculate_base_score()
 	var seed := _outfit_seed()
-	var offsets := [((seed % 5) - 2), (((seed / 5) as int) % 5) - 2, (((seed / 25) as int) % 5) - 2]
-	var scores: Array[int] = []
+	var offsets := [
+		(seed % 5) - 2,
+		(int(seed / 5.0) % 5) - 2,
+		(int(seed / 25.0) % 5) - 2
+	]
+	var scores: Array = []
 	for offset_variant in offsets:
 		scores.append(clampi(base_score + int(offset_variant), 60, 99))
-	var final_score := int(round((scores[0] + scores[1] + scores[2]) / 3.0))
+	var final_score := int(round((int(scores[0]) + int(scores[1]) + int(scores[2])) / 3.0))
 
 	GameSessionRuntime.record_score(final_score, selected_mode, equipped)
 	var saved_scores := GameSessionRuntime.load_scores()
@@ -341,7 +345,7 @@ func _judge_outfit() -> void:
 
 	for i in range(judge_labels.size()):
 		var judge := judge_labels[i] as Label
-		judge.text = "Jurado %d   ★ %d" % [i + 1, scores[i]]
+		judge.text = "Jurado %d   ★ %d" % [i + 1, int(scores[i])]
 		judge.visible = true
 
 	score_label.text = "%d / 100\n★" % final_score
