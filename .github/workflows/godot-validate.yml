@@ -1,0 +1,106 @@
+name: Godot 4.7.1 Validate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/complete-gameplay-v1
+      - feature/modular-juli-v2
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Godot 4.7.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 \
+            -o godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7.1-stable/Godot_v4.7.1-stable_linux.x86_64.zip
+          unzip -q godot.zip
+          chmod +x Godot_v4.7.1-stable_linux.x86_64
+          ./Godot_v4.7.1-stable_linux.x86_64 --version
+
+      - name: Import project and validate scripts
+        shell: bash
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.1-stable_linux.x86_64 \
+            --headless --path . --import --verbose \
+            2>&1 | tee godot-import.log
+
+          if grep -E "SCRIPT ERROR|Parse Error|Could not parse|Failed to load script" godot-import.log; then
+            echo "Godot reported a script parsing/loading error."
+            exit 1
+          fi
+
+      - name: Audit lightweight Juli GLB
+        shell: bash
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.1-stable_linux.x86_64 \
+            --headless --path . --script res://scripts/CharacterAudit.gd \
+            2>&1 | tee character-audit.log
+
+          if grep -E "SCRIPT ERROR|Parse Error|AUDIT:" character-audit.log; then
+            echo "Character audit failed."
+            exit 1
+          fi
+
+      - name: Validate modular avatar split
+        shell: bash
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.1-stable_linux.x86_64 \
+            --headless --path . --script res://scripts/ModularAvatarTest.gd \
+            2>&1 | tee modular-avatar.log
+
+          if grep -E "SCRIPT ERROR|Parse Error|MODULAR TEST:" modular-avatar.log; then
+            echo "Modular avatar test failed."
+            exit 1
+          fi
+
+      - name: Validate modular wardrobe
+        shell: bash
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.1-stable_linux.x86_64 \
+            --headless --path . --script res://scripts/JuliWardrobeRuntimeTest.gd \
+            2>&1 | tee wardrobe-runtime.log
+
+          if grep -E "SCRIPT ERROR|Parse Error|WARDROBE TEST:" wardrobe-runtime.log; then
+            echo "Wardrobe runtime test failed."
+            exit 1
+          fi
+
+      - name: Launch lobby headlessly
+        shell: bash
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.1-stable_linux.x86_64 \
+            --headless --path . scenes/Lobby.tscn --quit-after 8 \
+            2>&1 | tee godot-lobby.log
+
+          if grep -E "SCRIPT ERROR|Parse Error|Could not parse|Failed to load script|Invalid call|Invalid access" godot-lobby.log; then
+            echo "Godot reported a lobby runtime/script error."
+            exit 1
+          fi
+
+      - name: Launch runway headlessly
+        shell: bash
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.1-stable_linux.x86_64 \
+            --headless --path . scenes/Runway.tscn --quit-after 8 \
+            2>&1 | tee godot-runway.log
+
+          if grep -E "SCRIPT ERROR|Parse Error|Could not parse|Failed to load script|Invalid call|Invalid access" godot-runway.log; then
+            echo "Godot reported a runway runtime/script error."
+            exit 1
+          fi
