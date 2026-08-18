@@ -24,3 +24,6 @@ jobs:
 
       - name: Import project and parse scripts
         run: godot --headless --verbose --path . --editor --quit
+
+      - name: Inspect Juli GLB structure
+        run: godot --headless --path . --script res://tools/InspectJuli.gd
