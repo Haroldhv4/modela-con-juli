@@ -1,9 +1,13 @@
 extends Node
 
 const GameSession = preload("res://scripts/GameSession.gd")
+const ModularAvatarRuntime = preload("res://scripts/ModularAvatarRuntime.gd")
+const JuliWardrobeRuntime = preload("res://scripts/JuliWardrobeRuntime.gd")
+const OUTFIT_SAVE_PATH = "user://modela_con_juli_outfit.json"
 
 var runway = null
 var recorded = false
+var wardrobe_applied = false
 var mode = GameSession.DEFAULT_MODE
 var badge = null
 var ui_font = null
@@ -19,7 +23,15 @@ func _initialize():
 	set_process(true)
 
 func _process(_delta):
-	if runway == null or recorded:
+	if runway == null:
+		return
+
+	# RunwayV3 crea a Juli antes de iniciar el recorrido. Aplicamos aquí el mismo
+	# estado guardado del lobby para que la ropa no desaparezca al cambiar escena.
+	if not wardrobe_applied:
+		wardrobe_applied = _apply_saved_wardrobe()
+
+	if recorded:
 		return
 	if str(runway.get("phase")) == "score":
 		var score_callable = Callable(runway, "_calculate_score")
@@ -29,6 +41,33 @@ func _process(_delta):
 			GameSession.record_score(score, mode, variant)
 			_show_mode_result(score)
 			recorded = true
+
+func _apply_saved_wardrobe() -> bool:
+	var character = runway.get("character")
+	if character == null:
+		character = runway.get_node_or_null("RunwayJuli")
+	if character == null:
+		return false
+
+	var parts = ModularAvatarRuntime.prepare(character)
+	if not parts.has("OriginalOutfit"):
+		return false
+
+	var equipped = _load_equipped()
+	JuliWardrobeRuntime.apply_equipped(character, equipped)
+	print("ModelaConJuli: outfit del lobby aplicado en pasarela")
+	return true
+
+func _load_equipped() -> Dictionary:
+	if not FileAccess.file_exists(OUTFIT_SAVE_PATH):
+		return {}
+	var file = FileAccess.open(OUTFIT_SAVE_PATH, FileAccess.READ)
+	if not file:
+		return {}
+	var parsed = JSON.parse_string(file.get_as_text())
+	if parsed is Dictionary:
+		return parsed
+	return {}
 
 func _build_mode_badge():
 	ui_font = SystemFont.new()
