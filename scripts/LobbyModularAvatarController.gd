@@ -7,8 +7,10 @@ var lobby = null
 var character = null
 var parts = {}
 var last_report = {}
+var last_equipped = {}
 
 func _ready():
+	set_process(false)
 	call_deferred("_initialize")
 
 func _initialize():
@@ -27,10 +29,24 @@ func _initialize():
 
 	var current = lobby.get("equipped")
 	if current is Dictionary:
+		last_equipped = current.duplicate(true)
+		apply_equipped(current)
+	set_process(true)
+
+# Detecta el cambio que ya hace LobbyUI_v11._equip_item(). Así no duplicamos
+# lógica de botones ni necesitamos reemplazar la UI aceptada por el usuario.
+func _process(_delta):
+	if lobby == null or character == null:
+		return
+	var current = lobby.get("equipped")
+	if not (current is Dictionary):
+		return
+	if current != last_equipped:
+		last_equipped = current.duplicate(true)
 		apply_equipped(current)
 
-# Punto único usado por la UI. No reemplaza a Juli: solo modifica sus piezas
-# modulares/materiales o, cuando exista, conecta la prenda 3D al mismo rig.
+# Punto único usado por lobby/pasarela. No reemplaza a Juli: solo modifica sus
+# piezas modulares/materiales o conecta una prenda 3D al mismo rig.
 func apply_equipped(equipped: Dictionary) -> Dictionary:
 	if character == null:
 		return {}
