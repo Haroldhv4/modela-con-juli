@@ -5,7 +5,7 @@ extends Control
 
 const SAVE_PATH := "user://modela_con_juli_outfit.json"
 const JULI_PATH := "res://assets/characters/juli/anime_school_girl_rigged.glb"
-const WardrobeRuntime = preload("res://addons/ConfiguraBridge/configura_wardrobe_runtime.gd")
+const WardrobeRuntime = preload("res://addons/ConfiguraBridge/wardrobe_runtime_v2.gd")
 const GameSessionRuntime = preload("res://scripts/GameSession.gd")
 
 var equipped: Dictionary = {}
