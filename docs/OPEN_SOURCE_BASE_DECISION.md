@@ -1,68 +1,39 @@
 # Base open source para Modela con Juli
 
-Fecha de evaluación: 2026-08-17.
-
 ## Decisión
 
-Usar **Team-Figoose/Configura** como referencia/base arquitectónica para el sistema de personalización 3D, integrando solamente la parte necesaria para el runtime del juego.
+Usar **Team-Figoose/Configura** como referencia arquitectónica para el sistema de personalización 3D, sin importar su demo completa dentro del juego.
 
-No se incorpora el proyecto de ejemplo completo porque Modela con Juli ya tiene lobby, arte, modelos y presets de exportación propios. La integración mantiene separadas la UI, el estado del outfit y la representación 3D.
+La regla de runtime es: **una sola Juli persistente**. Equipar una prenda nunca debe sustituir a Juli por otro personaje.
 
-## Comparación
+## Estado técnico comprobado
 
-| Proyecto | Licencia | Godot 4 | Prendas 3D reales | Rendimiento / encaje | Windows + Android | Decisión |
-|---|---|---:|---:|---|---:|---|
-| Team-Figoose/Configura | MIT | Sí | Sí: assets modulares, mesh swap, blendshapes, deformación y materiales | Mejor encaje para un personaje persistente con un mesh por slot | Sí | **Elegido como referencia** |
-| smix8/Godot3DCharacterEditorWardrobe | MIT | Requiere portar desde Godot 3.2 | Sí | Útil como referencia, pero archivado y exige mantenimiento propio | Posible tras portar | Descartado como base principal |
-| GDQuest godot-4-3D-Characters | Revisar licencia por asset | Sí | No es un framework de armario | Útil para controladores/personajes, no resuelve vestuario | Sí | Complementario |
+El inspector automático ejecutado con Godot 4.7.1 confirmó para `anime_school_girl_rigged.glb`:
 
-## Corrección arquitectónica después del primer playtest
+- 4 `MeshInstance3D` con nombres/materiales genéricos.
+- `Skeleton3D` con 121 huesos.
+- No contiene `AnimationPlayer`/animaciones importadas.
 
-El primer vertical slice usó GLB completos de Chiyo como variantes para demostrar carga de geometría. El playtest mostró que ese enfoque es incorrecto para un juego de vestir porque cambia identidad, cuerpo, escala y ropa a la vez.
+También se compararon los GLB de Chiyo con Juli. Sus rigs usan convenciones completamente diferentes (`J_Bip_*` frente a `Bip001 *`) y no comparten nombres de hueso con el rig actual de Juli. Por ello **los modelos de Chiyo no se usan como prendas de Juli**.
 
-Desde esta revisión se aplica una regla estricta:
+## Vestuario real
 
-**Juli nunca se reemplaza para equipar una prenda.**
+El runtime seguro está en `addons/ConfiguraBridge/wardrobe_runtime_v2.gd`.
 
-El runtime mantiene una única instancia de `assets/characters/juli/anime_school_girl_rigged.glb`. Mientras llegan las prendas modulares reales, intenta aplicar variaciones visuales sobre materiales/mallas detectados del propio modelo. Si una zona no puede aislarse con seguridad, conserva a Juli y el estado de selección en vez de cargar otro personaje.
+Busca prendas por slot usando estas rutas:
 
-## Integración actual
+- `assets/wardrobe3d/hair/hair_*.glb`
+- `assets/wardrobe3d/tops/top_*.glb`
+- `assets/wardrobe3d/bottoms/skirt_*.glb`
+- `assets/wardrobe3d/shoes/shoes_*.glb`
+- `assets/wardrobe3d/accessories/glasses_*.glb`
 
-- `addons/ConfiguraBridge/configura_wardrobe_runtime.gd`
-  - detecta `Skeleton3D` y `AnimationPlayer`;
-  - intenta usar una animación idle existente;
-  - si no existe, aplica una pose relajada de respaldo y movimiento idle sutil;
-  - clasifica superficies por nombre/posición para variaciones visuales seguras;
-  - contiene `equip_modular_mesh()` para las prendas skinned definitivas.
-- `scripts/LobbyUI_v12.gd`
-  - mantiene una sola Juli durante todo el Lobby;
-  - guarda las seis categorías del outfit;
-  - guarda el modo de juego;
-  - no usa Chiyo para simular prendas.
-- `scripts/GameSession.gd`
-  - persiste modo, último resultado, mejor puntuación e historial.
-- `scenes/Runway.tscn` + `scripts/Runway.gd`
-  - carga siempre a Juli;
-  - reaplica el outfit guardado;
-  - cuenta regresiva, entrada, pose, tres jueces, puntuación, récord, repetir y volver.
-- `third_party/Configura/LICENSE.txt`
-  - conserva el aviso MIT de Configura.
+Cada prenda debe estar ajustada al cuerpo de Juli y compartir su rig/bind pose. Cuando existe, el Lobby reemplaza únicamente la prenda activa de ese slot. Si no existe todavía, Juli permanece intacta.
 
-## Estado de assets 3D
+## Seguridad del esqueleto
 
-El repositorio todavía no contiene para Juli un set completo de prendas independientes skinned que compartan exactamente su `Skeleton3D`, nombres de huesos y bind pose.
+Se eliminó la pose heurística que modificaba brazos/manos. El runtime V2 no altera huesos manualmente. Solo reproducirá una animación real si el modelo la contiene; actualmente Juli no contiene animaciones.
 
-Por tanto, el sistema actual es funcional a nivel de flujo y mantiene la identidad correcta del personaje, pero el cambio de **geometría real e independiente** para cada top, falda, zapato, cabello o lentes depende de incorporar esos assets modulares.
+## Siguiente hito
 
-La ruta definitiva ya está preparada: cada prenda se exportará como escena `MeshInstance3D` skinned al mismo esqueleto y se conectará a `equip_modular_mesh()` por slot (`hair`, `tops`, `bottoms`, `shoes`, `accessories`).
-
-## Rendimiento
-
-- una sola Juli activa por escena;
-- no se duplican cuerpos/esqueletos para cambiar de ropa;
-- materiales se duplican solo al aplicar un estilo sobre una superficie concreta;
-- renderer `gl_compatibility` ya configurado;
-- preset Android actual limitado a `arm64-v8a`;
-- la futura ropa modular mantiene un solo mesh activo por slot.
-
-Esta arquitectura es más adecuada para Windows y Android que cargar personajes completos como outfits.
+Crear/exportar el primer conjunto de prendas 3D skinned compatibles con Juli (top, inferior, zapatos, cabello/accesorio) y colocarlas en `assets/wardrobe3d`. A partir de ese momento las tarjetas existentes del armario las detectan sin reescribir la UI.
