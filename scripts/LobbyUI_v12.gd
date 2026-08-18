@@ -7,7 +7,7 @@ const WardrobeRuntime = preload("res://addons/ConfiguraBridge/configura_wardrobe
 const GameSessionRuntime = preload("res://scripts/GameSession.gd")
 
 var wardrobe_runtime = null
-var _runtime_ready := false
+var _runtime_ready: bool = false
 
 
 func _ready() -> void:
@@ -28,7 +28,7 @@ func _initialize_persistent_juli() -> void:
 		_show_toast("No se pudo preparar a Juli")
 		return
 
-	_runtime_ready = wardrobe_runtime.prepare_character()
+	_runtime_ready = bool(wardrobe_runtime.prepare_character())
 	if not _runtime_ready:
 		_show_toast("No se pudo preparar a Juli")
 		return
@@ -40,12 +40,12 @@ func _ensure_wardrobe_runtime() -> bool:
 	if wardrobe_runtime != null:
 		return true
 
-	var world := get_node_or_null("CharacterViewportContainer/CharacterViewport/CharacterWorld") as Node3D
+	var world: Node3D = get_node_or_null("CharacterViewportContainer/CharacterViewport/CharacterWorld") as Node3D
 	if world == null:
 		push_error("[LobbyV12] No se encontro CharacterWorld.")
 		return false
 
-	var juli := character_node as Node3D
+	var juli: Node3D = character_node as Node3D
 	if juli == null:
 		juli = world.get_node_or_null("Juli") as Node3D
 	if juli == null:
@@ -59,8 +59,8 @@ func _ensure_wardrobe_runtime() -> bool:
 
 
 func _equip_item(category, item) -> void:
-	var item_id := str(item.get("id", ""))
-	var item_name := str(item.get("name", ""))
+	var item_id: String = str(item.get("id", ""))
+	var item_name: String = str(item.get("name", ""))
 	equipped[category] = item_id
 	_refresh_items()
 
@@ -68,9 +68,11 @@ func _equip_item(category, item) -> void:
 		_show_toast("Seleccion guardada: " + item_name)
 		return
 	if not _runtime_ready:
-		_runtime_ready = wardrobe_runtime.prepare_character()
+		_runtime_ready = bool(wardrobe_runtime.prepare_character())
 
-	var visual_change := wardrobe_runtime.apply_style(str(category), item_id)
+	# wardrobe_runtime es una referencia dinamica a un RefCounted cargado por script.
+	# En Godot 4.7 no se puede usar := para inferir el retorno de esa llamada.
+	var visual_change: bool = bool(wardrobe_runtime.apply_style(str(category), item_id))
 	if visual_change:
 		_show_toast("Equipado: " + item_name)
 	else:
