@@ -129,30 +129,19 @@ func apply_style(category: String, item_id: String) -> bool:
 			continue
 
 		var styled = original.duplicate(true)
-		if styled is StandardMaterial3D:
-			var standard := styled as StandardMaterial3D
-			var base := standard.albedo_color
+		if styled is BaseMaterial3D:
+			var base_material := styled as BaseMaterial3D
+			var base := base_material.albedo_color
 			var strength := 0.78
 			if category == "makeup":
 				strength = 0.24
-			standard.albedo_color = Color(
+			base_material.albedo_color = Color(
 				lerpf(base.r, tint.r, strength),
 				lerpf(base.g, tint.g, strength),
 				lerpf(base.b, tint.b, strength),
 				base.a
 			)
-			mesh_instance.set_surface_override_material(surface, standard)
-			applied = true
-		elif styled is ORMMaterial3D:
-			var orm := styled as ORMMaterial3D
-			var orm_base := orm.albedo_color
-			orm.albedo_color = Color(
-				lerpf(orm_base.r, tint.r, 0.78),
-				lerpf(orm_base.g, tint.g, 0.78),
-				lerpf(orm_base.b, tint.b, 0.78),
-				orm_base.a
-			)
-			mesh_instance.set_surface_override_material(surface, orm)
+			mesh_instance.set_surface_override_material(surface, base_material)
 			applied = true
 
 	if applied:
@@ -322,11 +311,11 @@ func _classify_surface(mesh_instance: MeshInstance3D, material: Material, bounds
 
 
 func _surface_label(mesh_instance: MeshInstance3D, material: Material) -> String:
-	var parts := [str(mesh_instance.name)]
+	var label := str(mesh_instance.name)
 	if mesh_instance.mesh != null:
-		parts.append(str(mesh_instance.mesh.resource_name))
-	parts.append(str(material.resource_name))
-	return " ".join(parts).to_lower().replace(" ", "_").replace("-", "_")
+		label += " " + str(mesh_instance.mesh.resource_name)
+	label += " " + str(material.resource_name)
+	return label.to_lower().replace(" ", "_").replace("-", "_")
 
 
 func _mesh_vertical_bounds(mesh_instance: MeshInstance3D) -> Vector2:
@@ -335,10 +324,10 @@ func _mesh_vertical_bounds(mesh_instance: MeshInstance3D) -> Vector2:
 	var aabb := mesh_instance.mesh.get_aabb()
 	var min_y := INF
 	var max_y := -INF
-	for x in [aabb.position.x, aabb.position.x + aabb.size.x]:
-		for y in [aabb.position.y, aabb.position.y + aabb.size.y]:
-			for z in [aabb.position.z, aabb.position.z + aabb.size.z]:
-				var world_point := mesh_instance.global_transform * Vector3(x, y, z)
+	for x_value in [aabb.position.x, aabb.position.x + aabb.size.x]:
+		for y_value in [aabb.position.y, aabb.position.y + aabb.size.y]:
+			for z_value in [aabb.position.z, aabb.position.z + aabb.size.z]:
+				var world_point := mesh_instance.global_transform * Vector3(float(x_value), float(y_value), float(z_value))
 				var local_point := _character.to_local(world_point)
 				min_y = minf(min_y, local_point.y)
 				max_y = maxf(max_y, local_point.y)
