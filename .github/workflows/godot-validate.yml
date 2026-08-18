@@ -6,6 +6,7 @@ on:
     branches:
       - feature/complete-gameplay-v1
       - feature/modular-juli-v2
+      - feature/open-source-fashion-base
 
 jobs:
   validate:
