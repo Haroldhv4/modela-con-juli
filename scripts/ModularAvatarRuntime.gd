@@ -1,17 +1,23 @@
 extends RefCounted
 class_name ModularAvatarRuntime
 
-# Divide las superficies del mesh combinado del avatar ligero en piezas skinned
-# independientes, todas ligadas al mismo Skeleton3D/Skin. De este modo podremos
-# sustituir únicamente la ropa sin volver a cargar otro personaje completo.
+# Separa el GLB ligero de Juli en partes skinned reutilizando exactamente el
+# mismo Skeleton3D/Skin. Esto nos permite conservar un solo personaje y cambiar
+# únicamente ropa/materiales en runtime.
 
 const SOURCE_MESH_NAME = "Body_AnimeSchoolGirl"
 const PART_NAMES = {
 	"skin": "Body",
+	"body": "Body",
 	"eyes": "Eyes",
+	"eye": "Eyes",
 	"hair": "Hair",
-	"outfit": "OriginalOutfit"
+	"outfit": "OriginalOutfit",
+	"clothes": "OriginalOutfit",
+	"clothing": "OriginalOutfit"
 }
+const REQUIRED_PARTS = ["Body", "Eyes", "Hair", "OriginalOutfit"]
+const FALLBACK_BY_INDEX = ["Body", "Eyes", "Hair", "OriginalOutfit"]
 
 static func prepare(character: Node) -> Dictionary:
 	var result = {}
@@ -19,11 +25,11 @@ static func prepare(character: Node) -> Dictionary:
 		return result
 
 	# Si ya fue preparado, no duplicamos meshes.
-	for part_name_variant in PART_NAMES.values():
-		var existing = _find_node_recursive(character, str(part_name_variant))
+	for part_name in REQUIRED_PARTS:
+		var existing = _find_node_recursive(character, part_name)
 		if existing is MeshInstance3D:
-			result[str(part_name_variant)] = existing
-	if result.size() == PART_NAMES.size():
+			result[part_name] = existing
+	if result.size() == REQUIRED_PARTS.size():
 		return result
 
 	var source = _find_node_recursive(character, SOURCE_MESH_NAME)
@@ -41,14 +47,26 @@ static func prepare(character: Node) -> Dictionary:
 	if parent == null:
 		return result
 
+	# Limpiamos cualquier intento parcial anterior antes de reconstruir.
+	for part_name in REQUIRED_PARTS:
+		var old_part = _find_node_recursive(character, part_name)
+		if old_part is MeshInstance3D and old_part != source:
+			old_part.queue_free()
+	result.clear()
+
 	for surface_index in range(array_mesh.get_surface_count()):
 		var surface_name = str(array_mesh.surface_get_name(surface_index))
-		var normalized = surface_name.to_lower()
-		var node_name = str(PART_NAMES.get(normalized, surface_name))
+		var material = source.get_active_material(surface_index)
+		if material == null:
+			material = array_mesh.surface_get_material(surface_index)
+		var material_name = str(material.resource_name) if material else ""
+		var node_name = _resolve_part_name(surface_name, material_name, surface_index, array_mesh.get_surface_count())
+		if node_name == "" or result.has(node_name):
+			continue
 
 		# surface_get_arrays conserva vértices, normales, UV, ARRAY_BONES y
-		# ARRAY_WEIGHTS. No copiamos blend-shapes aquí porque no son necesarios para
-		# separar estas cuatro superficies y podían invalidar el nuevo ArrayMesh.
+		# ARRAY_WEIGHTS. Como el Skin y Skeleton NodePath también se reutilizan,
+		# la pieza continúa deformándose con el mismo rig.
 		var arrays = array_mesh.surface_get_arrays(surface_index)
 		if arrays.is_empty():
 			push_warning("ModelaConJuli: superficie vacía: " + surface_name)
@@ -58,11 +76,7 @@ static func prepare(character: Node) -> Dictionary:
 		part_mesh.resource_name = node_name + "Mesh"
 		var primitive = array_mesh.surface_get_primitive_type(surface_index)
 		part_mesh.add_surface_from_arrays(primitive, arrays)
-		part_mesh.surface_set_name(0, surface_name)
-
-		var material = source.get_active_material(surface_index)
-		if material == null:
-			material = array_mesh.surface_get_material(surface_index)
+		part_mesh.surface_set_name(0, surface_name if surface_name != "" else node_name)
 		if material:
 			part_mesh.surface_set_material(0, material)
 
@@ -72,10 +86,12 @@ static func prepare(character: Node) -> Dictionary:
 		part.skin = source.skin
 		part.skeleton = source.skeleton
 		part.transform = source.transform
+		part.cast_shadow = source.cast_shadow
+		part.layers = source.layers
 		parent.add_child(part)
 		result[node_name] = part
 
-	if result.size() == PART_NAMES.size():
+	if _has_required_parts(result):
 		# Ocultamos el combinado solo cuando las cuatro piezas se construyeron bien.
 		source.visible = false
 		source.set_meta("modela_con_juli_modular_source", true)
@@ -88,6 +104,27 @@ static func prepare(character: Node) -> Dictionary:
 		push_error("ModelaConJuli: no se pudieron crear todas las piezas modulares")
 
 	return result
+
+static func _resolve_part_name(surface_name: String, material_name: String, index: int, surface_count: int) -> String:
+	var candidates = [surface_name, material_name]
+	for raw_name in candidates:
+		var normalized = raw_name.to_lower().strip_edges()
+		for token_variant in PART_NAMES.keys():
+			var token = str(token_variant)
+			if normalized == token or normalized.begins_with(token + ".") or normalized.find(token) != -1:
+				return str(PART_NAMES[token_variant])
+
+	# El GLB auditado tiene cuatro superficies en orden Skin/Eyes/Hair/Outfit.
+	# Solo usamos este fallback cuando el modelo conserva exactamente esas cuatro.
+	if surface_count == FALLBACK_BY_INDEX.size() and index >= 0 and index < FALLBACK_BY_INDEX.size():
+		return str(FALLBACK_BY_INDEX[index])
+	return ""
+
+static func _has_required_parts(parts: Dictionary) -> bool:
+	for part_name in REQUIRED_PARTS:
+		if not parts.has(part_name):
+			return false
+	return true
 
 static func set_original_outfit_visible(character: Node, visible: bool) -> void:
 	var outfit = _find_node_recursive(character, "OriginalOutfit")
