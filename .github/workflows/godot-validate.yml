@@ -25,5 +25,11 @@ jobs:
       - name: Import project and parse scripts
         run: godot --headless --verbose --path . --editor --quit
 
-      - name: Inspect Juli GLB structure
+      - name: Inspect character GLB structure
         run: godot --headless --path . --script res://tools/InspectJuli.gd
+
+      - name: Upload GLB report
+        uses: actions/upload-artifact@v4
+        with:
+          name: juli-glb-report
+          path: inspect_report.txt
