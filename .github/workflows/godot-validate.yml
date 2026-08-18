@@ -66,6 +66,19 @@ jobs:
             exit 1
           fi
 
+      - name: Validate modular wardrobe
+        shell: bash
+        run: |
+          set -o pipefail
+          ./Godot_v4.7.1-stable_linux.x86_64 \
+            --headless --path . --script res://scripts/JuliWardrobeRuntimeTest.gd \
+            2>&1 | tee wardrobe-runtime.log
+
+          if grep -E "SCRIPT ERROR|Parse Error|WARDROBE TEST:" wardrobe-runtime.log; then
+            echo "Wardrobe runtime test failed."
+            exit 1
+          fi
+
       - name: Launch lobby headlessly
         shell: bash
         run: |
