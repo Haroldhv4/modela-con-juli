@@ -1,11 +1,13 @@
 extends RefCounted
 class_name JuliWardrobeRuntime
 
-# Sistema de guardarropa de Juli inspirado en el patrón MeshSwap de Configura:
-# una prenda real se importa como MeshInstance3D, se conecta al Skeleton3D vivo
-# y reemplaza solamente su categoría. Mientras producimos esas prendas 3D,
-# el outfit original se divide visualmente por altura mediante shader para que
-# tops, bottoms y shoes YA respondan de forma independiente en lobby/pasarela.
+# Guardarropa runtime para el GLB ligero de Juli.
+#
+# Etapa 1 (ya funcional): los items actuales del lobby cambian materiales por
+# categoría y el mismo estado viaja a la pasarela.
+# Etapa 2 (automática): cuando exista una prenda 3D en wardrobe/<categoria>/,
+# se carga esa geometría y se conecta al Skeleton3D vivo de Juli, sin reemplazar
+# el personaje completo.
 
 const ModularAvatarRuntime = preload("res://scripts/ModularAvatarRuntime.gd")
 const WARDROBE_ROOT = "res://assets/characters/juli/wardrobe"
@@ -96,10 +98,11 @@ static func apply_equipped(character: Node, equipped: Dictionary) -> Dictionary:
 		return report
 
 	var parts = ModularAvatarRuntime.prepare(character)
-	if not parts.has("OriginalOutfit"):
-		push_error("ModelaConJuli: no existe OriginalOutfit para aplicar guardarropa")
+	if not parts.has("Body") or not parts.has("OriginalOutfit") or not parts.has("Skeleton"):
+		push_error("ModelaConJuli: avatar incompleto para aplicar guardarropa")
 		return report
 
+	var body = parts["Body"] as MeshInstance3D
 	var outfit = parts["OriginalOutfit"] as MeshInstance3D
 	var outfit_material = _ensure_outfit_shader(outfit)
 	if outfit_material == null:
@@ -113,12 +116,12 @@ static func apply_equipped(character: Node, equipped: Dictionary) -> Dictionary:
 		_apply_prototype_tint(outfit_material, category, item_id)
 		report[category] = "geometry" if geometry_loaded else "prototype"
 
-	var hair = parts.get("Hair")
-	if hair is MeshInstance3D:
-		_apply_part_tint(hair, _hair_tint(str(equipped.get("hair", "hair_1"))))
+	var hair_index = ModularAvatarRuntime.get_surface_index_by_material(body, "Hair")
+	if hair_index >= 0:
+		_apply_surface_tint(body, hair_index, _hair_tint(str(equipped.get("hair", "hair_1"))))
 		report["hair"] = "material"
 
-	_apply_glasses(character, str(equipped.get("accessories", "glasses_1")))
+	_apply_glasses(parts, str(equipped.get("accessories", "glasses_1")))
 	report["accessories"] = "material"
 
 	return report
@@ -184,10 +187,8 @@ static func _set_region_visible(material: ShaderMaterial, category: String, visi
 	elif category == "shoes":
 		material.set_shader_parameter("shoes_visible", value)
 
-# Si existe una prenda 3D real con el mismo item_id, la preferimos al prototipo
-# por shader. El archivo debe contener solo la prenda, riggeada sobre el mismo
-# armature/rest pose de Juli. Este es el mismo patrón de MeshSwap que usa
-# Configura: la malla se conecta al Skeleton3D vivo del personaje.
+# Si existe una prenda 3D con el item_id actual se usa en lugar del prototipo.
+# La prenda debe estar riggeada con el mismo orden/rest pose de huesos de Juli.
 static func _equip_geometry_if_available(character: Node, category: String, item_id: String) -> bool:
 	_clear_geometry(character, category)
 	if item_id == "":
@@ -208,8 +209,9 @@ static func _equip_geometry_if_available(character: Node, category: String, item
 			staging.queue_free()
 		return false
 
-	var skeleton = _find_first_skeleton(character)
-	if skeleton == null:
+	var parts = ModularAvatarRuntime.prepare(character)
+	var skeleton = parts.get("Skeleton")
+	if not (skeleton is Skeleton3D):
 		staging.queue_free()
 		return false
 
@@ -225,12 +227,14 @@ static func _equip_geometry_if_available(character: Node, category: String, item
 		var mesh = mesh_variant as MeshInstance3D
 		if mesh == null:
 			continue
-		if mesh.skin != null:
-			mesh.set_skeleton_path(skeleton.get_path())
+		# Algunos GLB, incluido Juli, importan skin=null aunque sus ArrayMesh sí
+		# contienen ARRAY_BONES/ARRAY_WEIGHTS. Esos datos son la prueba fiable.
+		if ModularAvatarRuntime.has_bone_weights(mesh):
+			mesh.skeleton = mesh.get_path_to(skeleton)
 			skinned_count += 1
 
 	if skinned_count == 0:
-		push_warning("ModelaConJuli: " + path + " no contiene Skin; se requiere prenda riggeada")
+		push_warning("ModelaConJuli: prenda sin pesos de huesos: " + path)
 		staging.queue_free()
 		return false
 
@@ -250,13 +254,16 @@ static func _clear_geometry(character: Node, category: String) -> void:
 	if old:
 		old.queue_free()
 
-static func _apply_part_tint(mesh: MeshInstance3D, tint_data: Dictionary) -> void:
-	if mesh == null or mesh.mesh == null or mesh.mesh.get_surface_count() == 0:
+static func _apply_surface_tint(mesh: MeshInstance3D, surface_index: int, tint_data: Dictionary) -> void:
+	if mesh == null or mesh.mesh == null:
 		return
-	var source_material = mesh.get_active_material(0)
-	var current = mesh.get_surface_override_material(0)
+	if surface_index < 0 or surface_index >= mesh.mesh.get_surface_count():
+		return
+
+	var current = mesh.get_surface_override_material(surface_index)
 	var material = current
 	if not (material is ShaderMaterial and material.has_meta(COLOR_SHADER_META)):
+		var source_material = mesh.get_active_material(surface_index)
 		var shader = Shader.new()
 		shader.code = COLOR_SHADER_CODE
 		material = ShaderMaterial.new()
@@ -264,19 +271,19 @@ static func _apply_part_tint(mesh: MeshInstance3D, tint_data: Dictionary) -> voi
 		material.set_meta(COLOR_SHADER_META, true)
 		material.set_shader_parameter("albedo_tex", _material_texture(source_material))
 		material.set_shader_parameter("base_color", _material_color(source_material))
-		mesh.set_surface_override_material(0, material)
+		mesh.set_surface_override_material(surface_index, material)
+
 	material.set_shader_parameter("tint", tint_data.get("color", Color.WHITE))
 	material.set_shader_parameter("tint_mix", float(tint_data.get("mix", 0.0)))
 
-static func _apply_glasses(character: Node, item_id: String) -> void:
-	var glasses = _find_node_recursive(character, "Glasses")
+static func _apply_glasses(parts: Dictionary, item_id: String) -> void:
+	var glasses = parts.get("Glasses")
 	if not (glasses is MeshInstance3D):
 		return
 	glasses.visible = item_id != "none"
 	if not glasses.visible:
 		return
-	var tint_data = _glasses_tint(item_id)
-	_apply_part_tint(glasses, tint_data)
+	_apply_surface_tint(glasses, 0, _glasses_tint(item_id))
 
 static func _material_texture(material):
 	if material is BaseMaterial3D and material.albedo_texture != null:
@@ -337,15 +344,6 @@ static func _glasses_tint(item_id: String) -> Dictionary:
 		"glasses_5": return {"color": Color8(174, 181, 193), "mix": 0.74}
 		"glasses_6": return {"color": Color8(155, 92, 188), "mix": 0.74}
 		_: return {"color": Color.WHITE, "mix": 0.0}
-
-static func _find_first_skeleton(node: Node):
-	if node is Skeleton3D:
-		return node
-	for child in node.get_children():
-		var found = _find_first_skeleton(child)
-		if found:
-			return found
-	return null
 
 static func _find_meshes(node: Node) -> Array:
 	var out = []
