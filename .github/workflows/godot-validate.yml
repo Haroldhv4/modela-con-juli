@@ -1,0 +1,35 @@
+name: Godot Validate
+
+on:
+  push:
+    branches:
+      - main
+      - agent/configura-functional-base
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate-project:
+    name: Parse Godot project
+    runs-on: ubuntu-24.04
+    container:
+      image: barichello/godot-ci:4.7.1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Import project and parse scripts
+        run: godot --headless --verbose --path . --editor --quit
+
+      - name: Inspect character GLB structure
+        run: godot --headless --path . --script res://tools/InspectJuli.gd
+
+      - name: Upload GLB report
+        uses: actions/upload-artifact@v4
+        with:
+          name: juli-glb-report
+          path: inspect_report.txt
