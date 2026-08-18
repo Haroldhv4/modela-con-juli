@@ -1,30 +1,39 @@
 extends "res://scripts/LobbyUI_v11.gd"
 
 # MODELA CON JULI - LOBBY V12
-# Functional-first integration: the existing wardrobe UI now drives real 3D
-# model variants through the Configura-inspired runtime bridge.
+# Una sola Juli persistente. La UI nunca reemplaza al personaje completo.
 
 const WardrobeRuntime = preload("res://addons/ConfiguraBridge/configura_wardrobe_runtime.gd")
-
-const LOOK_VARIANTS := {
-	"top_1": "res://assets/characters/juli/anime_school_girl_rigged.glb",
-	"top_2": "res://assets/characters/chiyo/Chiyo Normal Cloth.glb",
-	"top_3": "res://assets/characters/chiyo/Chiyo School Dress.glb",
-	"top_4": "res://assets/characters/chiyo/Chiyo Yukata.glb",
-	"top_5": "res://assets/characters/chiyo/Chiyo Normal Cloth.glb",
-	"top_6": "res://assets/characters/chiyo/Chiyo School Dress.glb",
-	"top_7": "res://assets/characters/chiyo/Chiyo Normal Cloth.glb",
-	"top_8": "res://assets/characters/chiyo/Chiyo Yukata.glb",
-	"top_9": "res://assets/characters/chiyo/Chiyo School Dress.glb"
-}
+const GameSessionRuntime = preload("res://scripts/GameSession.gd")
 
 var wardrobe_runtime = null
+var _runtime_ready := false
 
 
 func _ready() -> void:
 	super()
-	# Wait one frame so the V11 viewport/character setup is fully ready.
-	call_deferred("_sync_saved_3d_outfit")
+	selected_mode = GameSessionRuntime.load_mode()
+	_refresh_modes()
+	call_deferred("_initialize_persistent_juli")
+
+
+func _process(delta: float) -> void:
+	super(delta)
+	if wardrobe_runtime != null:
+		wardrobe_runtime.update_idle(delta)
+
+
+func _initialize_persistent_juli() -> void:
+	if not _ensure_wardrobe_runtime():
+		_show_toast("No se pudo preparar a Juli")
+		return
+
+	_runtime_ready = wardrobe_runtime.prepare_character()
+	if not _runtime_ready:
+		_show_toast("No se pudo preparar a Juli")
+		return
+
+	wardrobe_runtime.apply_outfit(equipped)
 
 
 func _ensure_wardrobe_runtime() -> bool:
@@ -33,56 +42,54 @@ func _ensure_wardrobe_runtime() -> bool:
 
 	var world := get_node_or_null("CharacterViewportContainer/CharacterViewport/CharacterWorld") as Node3D
 	if world == null:
-		push_warning("[LobbyV12] CharacterWorld not found.")
+		push_error("[LobbyV12] No se encontro CharacterWorld.")
 		return false
 
-	var initial := character_node as Node3D
-	if initial == null:
-		initial = world.get_node_or_null("Juli") as Node3D
+	var juli := character_node as Node3D
+	if juli == null:
+		juli = world.get_node_or_null("Juli") as Node3D
+	if juli == null:
+		push_error("[LobbyV12] No se encontro la instancia persistente de Juli.")
+		return false
 
-	wardrobe_runtime = WardrobeRuntime.new(world, initial)
-	for variant_id in LOOK_VARIANTS.keys():
-		wardrobe_runtime.register_variant(str(variant_id), str(LOOK_VARIANTS[variant_id]))
+	# Esta referencia permanece durante toda la sesion del Lobby.
+	character_node = juli
+	wardrobe_runtime = WardrobeRuntime.new(world, juli)
 	return true
-
-
-func _sync_saved_3d_outfit() -> void:
-	_apply_real_3d_outfit(str(equipped.get("tops", "top_1")), false)
 
 
 func _equip_item(category, item) -> void:
 	var item_id := str(item.get("id", ""))
+	var item_name := str(item.get("name", ""))
 	equipped[category] = item_id
 	_refresh_items()
 
-	if category == "tops":
-		if _apply_real_3d_outfit(item_id, true):
-			_show_toast("3D equipado: " + str(item.get("name", "")))
-		else:
-			_show_toast("Guardado: " + str(item.get("name", "")))
-	else:
-		# These slots are already persisted and flow into scoring/runway state.
-		# They become visual 3D swaps as soon as their modular rigged assets are
-		# exported for Juli; no UI/save-game rewrite will be necessary.
-		_show_toast("Equipado: " + str(item.get("name", "")))
-
-
-func _apply_real_3d_outfit(top_id: String, reset_view: bool) -> bool:
-	if not LOOK_VARIANTS.has(top_id):
-		return false
 	if not _ensure_wardrobe_runtime():
-		return false
+		_show_toast("Seleccion guardada: " + item_name)
+		return
+	if not _runtime_ready:
+		_runtime_ready = wardrobe_runtime.prepare_character()
 
-	var next_character := wardrobe_runtime.equip_variant(top_id) as Node3D
-	if next_character == null:
-		return false
+	var visual_change := wardrobe_runtime.apply_style(str(category), item_id)
+	if visual_change:
+		_show_toast("Equipado: " + item_name)
+	else:
+		# Nunca sustituimos a Juli por otro GLB para fingir una prenda. Si el GLB
+		# actual no expone esa zona/material, conservamos a Juli y el estado queda
+		# listo para la futura malla modular real.
+		wardrobe_runtime.pulse_selection()
+		_show_toast("Seleccionado: " + item_name)
 
-	character_node = next_character
-	character_base_y = next_character.position.y
-	character_yaw = 0.0
-	idle_time = 0.0
 
-	if reset_view:
-		character_camera_z = 4.04
-		_apply_character_zoom()
-	return true
+func _select_mode(mode) -> void:
+	super(mode)
+	GameSessionRuntime.save_mode(str(selected_mode))
+
+
+func _start_runway() -> void:
+	_save_outfit()
+	GameSessionRuntime.save_mode(str(selected_mode))
+	if ResourceLoader.exists("res://scenes/Runway.tscn"):
+		get_tree().change_scene_to_file("res://scenes/Runway.tscn")
+	else:
+		_show_toast("Pasarela no disponible")
