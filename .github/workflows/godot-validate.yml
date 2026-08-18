@@ -1,0 +1,26 @@
+name: Godot Validate
+
+on:
+  push:
+    branches:
+      - main
+      - agent/configura-functional-base
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate-project:
+    name: Parse Godot project
+    runs-on: ubuntu-24.04
+    container:
+      image: barichello/godot-ci:4.7.1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Import project and parse scripts
+        run: godot --headless --verbose --path . --editor --quit
